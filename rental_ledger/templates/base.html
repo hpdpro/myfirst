@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}임대 가계부{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('dashboard') }}">🏠 임대 가계부</a>
+    <nav>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if request.endpoint == 'dashboard' }}">현황</a>
+      <a href="{{ url_for('transactions') }}" class="{{ 'on' if request.endpoint in ('transactions', 'tx_form') }}">입출금</a>
+      <a href="{{ url_for('units') }}" class="{{ 'on' if request.endpoint in ('units', 'unit_form') }}">호실</a>
+      <a href="{{ url_for('report') }}" class="{{ 'on' if request.endpoint == 'report' }}">연간</a>
+    </nav>
+    <a class="btn primary" href="{{ url_for('tx_form') }}">+ 입출금 기록</a>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

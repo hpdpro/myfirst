@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ year }}년 연간 보고 - 임대 가계부{% endblock %}
+{% block content %}
+<div class="month-nav">
+  <a href="{{ url_for('report', year=year - 1) }}">◀</a>
+  <h1>{{ year }}년 연간 보고</h1>
+  <a href="{{ url_for('report', year=year + 1) }}">▶</a>
+</div>
+
+{% set ns = namespace(i=0, e=0, max=1) %}
+{% for m, v in months.items() %}
+  {% set ns.i = ns.i + v['수입'] %}{% set ns.e = ns.e + v['지출'] %}
+  {% if v['수입'] > ns.max %}{% set ns.max = v['수입'] %}{% endif %}
+  {% if v['지출'] > ns.max %}{% set ns.max = v['지출'] %}{% endif %}
+{% endfor %}
+
+<section class="cards">
+  <div class="card"><span>연간 수입</span><strong class="in">{{ ns.i|won }}</strong></div>
+  <div class="card"><span>연간 지출</span><strong class="out">{{ ns.e|won }}</strong></div>
+  <div class="card"><span>연간 순수익</span><strong>{{ (ns.i - ns.e)|won }}</strong></div>
+</section>
+
+<section class="panel">
+  <h2>월별 수입·지출</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>월</th><th class="num">수입</th><th class="num">지출</th><th class="num">순수익</th><th class="bar-col"></th></tr></thead>
+    <tbody>
+    {% for m, v in months.items() %}
+      <tr>
+        <td><a href="{{ url_for('transactions', month='%04d-%02d'|format(year, m)) }}">{{ m }}월</a></td>
+        <td class="num in">{{ v['수입']|won }}</td>
+        <td class="num out">{{ v['지출']|won }}</td>
+        <td class="num">{{ (v['수입'] - v['지출'])|won }}</td>
+        <td class="bar-col">
+          <div class="bar in-bg" style="width: {{ (v['수입'] / ns.max * 100)|round(1) }}%"></div>
+          <div class="bar out-bg" style="width: {{ (v['지출'] / ns.max * 100)|round(1) }}%"></div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>호실별 합계</h2>
+  {% if by_unit %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>호실</th><th class="num">수입</th><th class="num">지출</th><th class="num">순수익</th></tr></thead>
+    <tbody>
+    {% for u in by_unit %}
+      <tr><td>{{ u.name }}</td><td class="num in">{{ u.income|won }}</td><td class="num out">{{ u.expense|won }}</td><td class="num">{{ (u.income - u.expense)|won }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty">이 해의 기록이 없습니다.</p>{% endif %}
+</section>
+{% endblock %}

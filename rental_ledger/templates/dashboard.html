@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="month-nav">
+  <a href="{{ url_for('dashboard', month=prev_month) }}">◀</a>
+  <h1>{{ year }}년 {{ month }}월 현황</h1>
+  <a href="{{ url_for('dashboard', month=next_month) }}">▶</a>
+</div>
+
+<section class="cards">
+  <div class="card"><span>이번 달 수입</span><strong class="in">{{ income|won }}</strong></div>
+  <div class="card"><span>이번 달 지출</span><strong class="out">{{ expense|won }}</strong></div>
+  <div class="card"><span>순수익</span><strong class="{{ 'in' if income - expense >= 0 else 'out' }}">{{ (income - expense)|won }}</strong></div>
+  <div class="card"><span>미수금 (월세+관리비)</span><strong class="{{ 'out' if unpaid_total else '' }}">{{ unpaid_total|won }}</strong></div>
+  <div class="card"><span>임대 중 / 전체 호실</span><strong>{{ occupied }} / {{ unit_count }}</strong></div>
+  <div class="card"><span>보유 보증금 합계</span><strong>{{ deposit_total|won }}</strong></div>
+</section>
+
+<section class="panel">
+  <h2>호실별 월세 납부 현황</h2>
+  {% if status %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>호실</th><th>임차인</th><th>납부일</th><th class="num">청구액</th><th class="num">입금액</th><th>상태</th><th></th></tr></thead>
+    <tbody>
+    {% for r in status %}
+      <tr>
+        <td>{{ r.unit.name }}</td>
+        <td>{{ r.unit.tenant or '-' }}</td>
+        <td>{{ r.unit.pay_day }}일</td>
+        <td class="num">{{ r.due|won }}</td>
+        <td class="num">{{ r.paid|won }}</td>
+        <td><span class="badge s-{{ r.state }}">{{ r.state }}</span></td>
+        <td>
+          {% if r.state in ('미납', '일부납부') %}
+          <a class="btn small" href="{{ url_for('tx_form', unit_id=r.unit.id, category='월세', kind='수입', amount=r.due - r.paid) }}">입금 기록</a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">등록된 호실이 없습니다. <a href="{{ url_for('unit_form') }}">호실을 먼저 등록하세요.</a></p>
+  {% endif %}
+</section>
+
+<div class="two-col">
+  <section class="panel">
+    <h2>분류별 합계</h2>
+    {% if by_category %}
+    <div class="table-wrap"><table>
+      <tbody>
+      {% for c in by_category %}
+        <tr><td><span class="tag {{ 'in' if c.kind == '수입' else 'out' }}">{{ c.kind }}</span> {{ c.category }}</td><td class="num">{{ c.total|won }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="empty">이 달의 기록이 없습니다.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>계약 만기 예정 (90일 이내)</h2>
+    {% if expiring %}
+    <div class="table-wrap"><table>
+      <tbody>
+      {% for u in expiring %}
+        <tr><td>{{ u.name }} · {{ u.tenant }}</td><td>{{ u.end_date }}</td><td class="num">보증금 {{ u.deposit|won }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="empty">만기 예정인 계약이 없습니다.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

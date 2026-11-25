@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}입출금 내역 - 임대 가계부{% endblock %}
+{% block content %}
+<div class="month-nav">
+  <a href="{{ url_for('transactions', month=prev_month, unit_id=unit_filter, kind=kind_filter) }}">◀</a>
+  <h1>{{ year }}년 {{ month }}월 입출금</h1>
+  <a href="{{ url_for('transactions', month=next_month, unit_id=unit_filter, kind=kind_filter) }}">▶</a>
+</div>
+
+<form class="filters" method="get">
+  <input type="hidden" name="month" value="{{ '%04d-%02d'|format(year, month) }}">
+  <select name="unit_id" onchange="this.form.submit()">
+    <option value="">전체 호실</option>
+    {% for u in units %}<option value="{{ u.id }}" {{ 'selected' if unit_filter == u.id|string }}>{{ u.name }}</option>{% endfor %}
+  </select>
+  <select name="kind" onchange="this.form.submit()">
+    <option value="">수입+지출</option>
+    <option {{ 'selected' if kind_filter == '수입' }}>수입</option>
+    <option {{ 'selected' if kind_filter == '지출' }}>지출</option>
+  </select>
+</form>
+
+<section class="cards">
+  <div class="card"><span>수입</span><strong class="in">{{ income|won }}</strong></div>
+  <div class="card"><span>지출</span><strong class="out">{{ expense|won }}</strong></div>
+  <div class="card"><span>차액</span><strong>{{ (income - expense)|won }}</strong></div>
+</section>
+
+<div class="panel table-wrap">
+{% if rows %}
+<table>
+  <thead><tr><th>날짜</th><th>구분</th><th>분류</th><th>호실</th><th class="num">금액</th><th>메모</th><th></th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+    <tr>
+      <td>{{ t.tx_date }}</td>
+      <td><span class="tag {{ 'in' if t.kind == '수입' else 'out' }}">{{ t.kind }}</span></td>
+      <td>{{ t.category }}</td>
+      <td>{{ t.unit_name or '공통' }}</td>
+      <td class="num {{ 'in' if t.kind == '수입' else 'out' }}">{{ '+' if t.kind == '수입' else '-' }}{{ t.amount|won }}</td>
+      <td>{{ t.memo }}</td>
+      <td class="actions"><a href="{{ url_for('tx_form', tx_id=t.id) }}">수정</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">이 달의 기록이 없습니다.</p>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}입출금 {{ '수정' if tx_id else '기록' }} - 임대 가계부{% endblock %}
+{% block content %}
+<h1>입출금 {{ '수정' if tx_id else '기록' }}</h1>
+
+<form method="post" class="panel form" id="txform">
+  <div class="kind-toggle">
+    <label><input type="radio" name="kind" value="수입" {{ 'checked' if tx.kind != '지출' }}> <span class="in">수입</span></label>
+    <label><input type="radio" name="kind" value="지출" {{ 'checked' if tx.kind == '지출' }}> <span class="out">지출</span></label>
+  </div>
+  <div class="grid">
+    <label>날짜 *<input type="date" name="tx_date" required value="{{ tx.tx_date }}"></label>
+    <label>금액 (원) *<input name="amount" inputmode="numeric" required value="{{ tx.amount if tx.amount not in (None, -1) else '' }}" placeholder="예: 500000"></label>
+    <label>분류 *
+      <select name="category" id="category" required data-current="{{ tx.category }}"></select>
+    </label>
+    <label>호실
+      <select name="unit_id">
+        <option value="">공통 (건물 전체)</option>
+        {% for u in units %}
+          <option value="{{ u.id }}" {{ 'selected' if tx.unit_id == u.id }}>{{ u.name }}{{ ' · ' ~ u.tenant if u.tenant }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <label>메모<input name="memo" value="{{ tx.memo }}" placeholder="예: 11월분, 보일러 수리"></label>
+  <div class="form-actions">
+    <button class="btn primary" type="submit">저장</button>
+    {% if not tx_id %}<button class="btn" type="submit" name="again" value="1">저장 후 계속 입력</button>{% endif %}
+    <a class="btn" href="{{ url_for('transactions') }}">취소</a>
+  </div>
+</form>
+
+{% if tx_id %}
+<form method="post" action="{{ url_for('tx_delete', tx_id=tx_id) }}" onsubmit="return confirm('이 기록을 삭제할까요?');">
+  <button class="btn danger" type="submit">기록 삭제</button>
+</form>
+{% endif %}
+
+<script>
+  const CATS = { "수입": {{ income_categories|tojson }}, "지출": {{ expense_categories|tojson }} };
+  const sel = document.getElementById("category");
+  function fill() {
+    const kind = document.querySelector('input[name="kind"]:checked').value;
+    const current = sel.value || sel.dataset.current;
+    sel.innerHTML = "";
+    const list = CATS[kind].slice();
+    if (current && !list.includes(current) && !CATS[kind === "수입" ? "지출" : "수입"].includes(current)) list.push(current);
+    for (const c of list) {
+      const o = document.createElement("option");
+      o.textContent = c;
+      if (c === current) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+  document.querySelectorAll('input[name="kind"]').forEach(r => r.addEventListener("change", fill));
+  fill();
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}호실 관리 - 임대 가계부{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>호실 관리</h1>
+  <a class="btn" href="{{ url_for('unit_form') }}">+ 호실 추가</a>
+</div>
+
+{% if units %}
+<div class="table-wrap panel">
+<table>
+  <thead>
+    <tr><th>호실</th><th>임차인</th><th>연락처</th><th>계약</th><th class="num">보증금</th><th class="num">월세</th><th class="num">관리비</th><th>납부일</th><th>계약기간</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for u in units %}
+    <tr class="{{ '' if is_active(u, today) else 'muted' }}">
+      <td><strong>{{ u.name }}</strong></td>
+      <td>{{ u.tenant or '공실' }}</td>
+      <td>{{ u.phone }}</td>
+      <td>{{ u.contract_type }}</td>
+      <td class="num">{{ u.deposit|won }}</td>
+      <td class="num">{{ u.monthly_rent|won }}</td>
+      <td class="num">{{ u.maintenance|won }}</td>
+      <td>{{ u.pay_day }}일</td>
+      <td>{{ u.start_date or '?' }} ~ {{ u.end_date or '?' }}</td>
+      <td class="actions">
+        <a href="{{ url_for('transactions', unit_id=u.id) }}">내역</a>
+        <a href="{{ url_for('unit_form', unit_id=u.id) }}">수정</a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+  <p class="empty panel">등록된 호실이 없습니다. 오른쪽 위 <b>+ 호실 추가</b>로 시작하세요. (예: 101호, 102호, 201호 …)</p>
+{% endif %}
+{% endblock %}
