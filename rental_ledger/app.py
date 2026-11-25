@@ -43,6 +43,23 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(tx_date);
+
+-- 종료된(지난) 계약 이력. 현재 계약은 units 테이블에 있습니다.
+CREATE TABLE IF NOT EXISTS contracts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id       INTEGER NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    tenant        TEXT NOT NULL,
+    phone         TEXT NOT NULL DEFAULT '',
+    contract_type TEXT NOT NULL DEFAULT '월세',
+    deposit       INTEGER NOT NULL DEFAULT 0,
+    monthly_rent  INTEGER NOT NULL DEFAULT 0,
+    maintenance   INTEGER NOT NULL DEFAULT 0,
+    start_date    TEXT NOT NULL DEFAULT '',
+    end_date      TEXT NOT NULL,
+    memo          TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_contracts_unit ON contracts(unit_id, end_date);
 """
 
 app = Flask(__name__)
@@ -133,6 +150,16 @@ def overlaps_month(unit, start, end):
     return True
 
 
+def contract_for_month(unit, past_contracts, start, end):
+    """해당 월에 적용되는 계약. 현재 계약이 우선이고, 없으면 지난 계약 중 가장 최근 것."""
+    if overlaps_month(unit, start, end):
+        return unit
+    for c in past_contracts:  # end_date 내림차순
+        if overlaps_month(c, start, end):
+            return c
+    return None
+
+
 def rent_status(db, year, month):
     """호실별 해당 월의 약정액 대비 입금액(월세+관리비)."""
     start, end = month_range(year, month)
@@ -146,12 +173,16 @@ def rent_status(db, year, month):
             (start, end),
         )
     }
+    past = {}
+    for c in db.execute("SELECT * FROM contracts ORDER BY end_date DESC"):
+        past.setdefault(c["unit_id"], []).append(c)
+
     rows = []
     for unit in db.execute("SELECT * FROM units ORDER BY name"):
-        due = unit["monthly_rent"] + unit["maintenance"]
-        active = overlaps_month(unit, start, end)
+        contract = contract_for_month(unit, past.get(unit["id"], []), start, end)
+        due = contract["monthly_rent"] + contract["maintenance"] if contract else 0
         amount_paid = paid.get(unit["id"], 0)
-        if not active:
+        if contract is None:
             state = "공실/계약없음"
         elif due == 0:
             state = "해당없음"
@@ -161,7 +192,11 @@ def rent_status(db, year, month):
             state = "일부납부"
         else:
             state = "미납"
-        rows.append({"unit": unit, "due": due if active else 0, "paid": amount_paid, "state": state})
+        rows.append({
+            "unit": unit, "due": due, "paid": amount_paid, "state": state,
+            "tenant": contract["tenant"] if contract else "",
+            "is_past": contract is not None and contract is not unit,
+        })
     return rows
 
 
@@ -277,6 +312,8 @@ def unit_form(unit_id=None):
                     )
                 db.commit()
                 flash("호실 정보를 저장했습니다.")
+                if unit_id is not None:
+                    return redirect(url_for("unit_detail", unit_id=unit_id))
                 return redirect(url_for("units"))
             except sqlite3.IntegrityError:
                 errors.append("같은 이름의 호실이 이미 있습니다.")
@@ -292,8 +329,192 @@ def unit_delete(unit_id):
     db = get_db()
     db.execute("DELETE FROM units WHERE id = ?", (unit_id,))
     db.commit()
-    flash("호실을 삭제했습니다. (기존 거래 내역은 '호실 없음'으로 남습니다)")
+    flash("호실과 지난 계약 이력을 삭제했습니다. (거래 내역은 '공통'으로 남습니다)")
     return redirect(url_for("units"))
+
+
+# ---------------------------------------------------------------- unit detail & contract history
+def get_unit_or_404(db, unit_id):
+    unit = db.execute("SELECT * FROM units WHERE id = ?", (unit_id,)).fetchone()
+    if unit is None:
+        abort(404)
+    return unit
+
+
+def rent_income(db, unit_id, start, end):
+    """기간 중 해당 호실의 월세+관리비 입금 합계."""
+    sql = """SELECT COALESCE(SUM(amount), 0) FROM transactions
+             WHERE unit_id = ? AND kind = '수입' AND category IN ('월세', '관리비')"""
+    params = [unit_id]
+    if start:
+        sql += " AND tx_date >= ?"
+        params.append(start)
+    if end:
+        sql += " AND tx_date <= ?"
+        params.append(end)
+    return db.execute(sql, params).fetchone()[0]
+
+
+@app.route("/units/<int:unit_id>")
+def unit_detail(unit_id):
+    db = get_db()
+    unit = get_unit_or_404(db, unit_id)
+    history = []
+    for c in db.execute("SELECT * FROM contracts WHERE unit_id = ? ORDER BY end_date DESC", (unit_id,)):
+        history.append({"c": c, "received": rent_income(db, unit_id, c["start_date"], c["end_date"])})
+    current_received = (
+        rent_income(db, unit_id, unit["start_date"], unit["end_date"] or None) if unit["tenant"] else 0
+    )
+    txs = db.execute(
+        "SELECT * FROM transactions WHERE unit_id = ? ORDER BY tx_date DESC, id DESC", (unit_id,)
+    ).fetchall()
+    income = sum(t["amount"] for t in txs if t["kind"] == "수입")
+    expense = sum(t["amount"] for t in txs if t["kind"] == "지출")
+    return render_template(
+        "unit_detail.html", unit=unit, history=history, current_received=current_received,
+        txs=txs, income=income, expense=expense,
+    )
+
+
+def contract_from_form(form):
+    return {
+        "tenant": form.get("tenant", "").strip(),
+        "phone": form.get("phone", "").strip(),
+        "contract_type": form.get("contract_type") if form.get("contract_type") in CONTRACT_TYPES else "월세",
+        "deposit": parse_int(form.get("deposit")),
+        "monthly_rent": parse_int(form.get("monthly_rent")),
+        "maintenance": parse_int(form.get("maintenance")),
+        "start_date": form.get("start_date", "").strip(),
+        "end_date": form.get("end_date", "").strip(),
+        "memo": form.get("memo", "").strip(),
+    }
+
+
+def validate_contract(db, unit_id, data, contract_id=None):
+    errors = []
+    if not data["tenant"]:
+        errors.append("임차인 이름을 입력하세요.")
+    if data["start_date"] and not is_valid_date(data["start_date"]):
+        errors.append("입주일 형식이 올바르지 않습니다.")
+    if not is_valid_date(data["end_date"]):
+        errors.append("퇴거일을 입력하세요.")
+    if errors:
+        return errors
+    if data["start_date"] and data["start_date"] > data["end_date"]:
+        errors.append("퇴거일이 입주일보다 빠릅니다.")
+    start = data["start_date"] or "0000-00-00"
+    for c in db.execute("SELECT * FROM contracts WHERE unit_id = ? AND id != ?", (unit_id, contract_id or 0)):
+        if (c["start_date"] or "0000-00-00") <= data["end_date"] and c["end_date"] >= start:
+            errors.append(f"다른 지난 계약({c['tenant']}, {c['start_date'] or '?'} ~ {c['end_date']})과 기간이 겹칩니다.")
+    return errors
+
+
+def insert_contract(db, unit_id, data):
+    cols = list(data)
+    db.execute(
+        f"INSERT INTO contracts (unit_id, {', '.join(cols)}) VALUES (?, {', '.join('?' for _ in cols)})",
+        [unit_id] + [data[c] for c in cols],
+    )
+
+
+@app.route("/units/<int:unit_id>/end", methods=["GET", "POST"])
+def contract_end(unit_id):
+    """현재 계약을 종료해 이력으로 옮기고 호실을 공실로 만듭니다."""
+    db = get_db()
+    unit = get_unit_or_404(db, unit_id)
+    if not unit["tenant"]:
+        flash("이 호실에는 현재 계약이 없습니다.", "error")
+        return redirect(url_for("unit_detail", unit_id=unit_id))
+
+    form = {
+        "end_date": unit["end_date"] if unit["end_date"] and unit["end_date"] <= date.today().isoformat()
+        else date.today().isoformat(),
+        "record_return": "1" if unit["deposit"] else "",
+        "return_amount": unit["deposit"],
+        "memo": "",
+    }
+    if request.method == "POST":
+        form = {
+            "end_date": request.form.get("end_date", "").strip(),
+            "record_return": request.form.get("record_return", ""),
+            "return_amount": parse_int(request.form.get("return_amount"), -1),
+            "memo": request.form.get("memo", "").strip(),
+        }
+        data = {k: unit[k] for k in ("tenant", "phone", "contract_type", "deposit", "monthly_rent",
+                                     "maintenance", "start_date")}
+        data["end_date"] = form["end_date"]
+        data["memo"] = "\n".join(m for m in (unit["memo"], form["memo"]) if m)
+        errors = validate_contract(db, unit_id, data)
+        if form["record_return"] and form["return_amount"] <= 0:
+            errors.append("반환할 보증금 금액을 입력하세요.")
+        if not errors:
+            insert_contract(db, unit_id, data)
+            if form["record_return"]:
+                db.execute(
+                    """INSERT INTO transactions (tx_date, kind, category, unit_id, amount, memo)
+                       VALUES (?, '지출', '보증금 반환', ?, ?, ?)""",
+                    (data["end_date"], unit_id, form["return_amount"], f"{unit['tenant']} 퇴거"),
+                )
+            db.execute(
+                """UPDATE units SET tenant = '', phone = '', deposit = 0,
+                   start_date = '', end_date = '', memo = '' WHERE id = ?""",
+                (unit_id,),
+            )
+            db.commit()
+            flash(f"{unit['tenant']} 님의 계약을 종료하고 이력에 저장했습니다. 새 임차인은 [현재 계약 수정]에서 입력하세요.")
+            return redirect(url_for("unit_detail", unit_id=unit_id))
+        for e in errors:
+            flash(e, "error")
+    return render_template("contract_end.html", unit=unit, form=form)
+
+
+@app.route("/units/<int:unit_id>/history/new", methods=["GET", "POST"])
+@app.route("/contracts/<int:contract_id>/edit", methods=["GET", "POST"])
+def contract_form(unit_id=None, contract_id=None):
+    """지난 계약을 직접 입력하거나 수정합니다."""
+    db = get_db()
+    contract = None
+    if contract_id is not None:
+        contract = db.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
+        if contract is None:
+            abort(404)
+        unit_id = contract["unit_id"]
+    unit = get_unit_or_404(db, unit_id)
+
+    if request.method == "POST":
+        data = contract_from_form(request.form)
+        errors = validate_contract(db, unit_id, data, contract_id)
+        if not errors:
+            if contract is None:
+                insert_contract(db, unit_id, data)
+            else:
+                db.execute(
+                    f"UPDATE contracts SET {', '.join(f'{c} = ?' for c in data)} WHERE id = ?",
+                    list(data.values()) + [contract_id],
+                )
+            db.commit()
+            flash("지난 계약을 저장했습니다.")
+            return redirect(url_for("unit_detail", unit_id=unit_id))
+        for e in errors:
+            flash(e, "error")
+        contract = data
+
+    return render_template(
+        "contract_form.html", unit=unit, contract=contract, contract_id=contract_id,
+        contract_types=CONTRACT_TYPES,
+    )
+
+
+@app.route("/contracts/<int:contract_id>/delete", methods=["POST"])
+def contract_delete(contract_id):
+    db = get_db()
+    row = db.execute("SELECT unit_id FROM contracts WHERE id = ?", (contract_id,)).fetchone()
+    if row is None:
+        abort(404)
+    db.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
+    db.commit()
+    flash("지난 계약을 삭제했습니다.")
+    return redirect(url_for("unit_detail", unit_id=row["unit_id"]))
 
 
 # ---------------------------------------------------------------- transactions

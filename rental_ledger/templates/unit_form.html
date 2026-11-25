@@ -3,6 +3,9 @@
 {% block content %}
 <h1>호실 {{ '수정' if unit_id else '추가' }}</h1>
 
+{% if unit_id and unit and unit.tenant %}
+<p class="hint">임차인이 바뀌었다면 여기서 이름을 고치지 말고, 먼저 <a href="{{ url_for('contract_end', unit_id=unit_id) }}">계약 종료</a>를 눌러 지난 계약을 이력에 남기세요.</p>
+{% endif %}
 <form method="post" class="panel form">
   <div class="grid">
     <label>호실 이름 *<input name="name" required value="{{ unit.name if unit else '' }}" placeholder="예: 201호"></label>
@@ -23,7 +26,7 @@
   <label>메모<textarea name="memo" rows="3">{{ unit.memo if unit else '' }}</textarea></label>
   <div class="form-actions">
     <button class="btn primary" type="submit">저장</button>
-    <a class="btn" href="{{ url_for('units') }}">취소</a>
+    <a class="btn" href="{{ url_for('unit_detail', unit_id=unit_id) if unit_id else url_for('units') }}">취소</a>
   </div>
 </form>
 

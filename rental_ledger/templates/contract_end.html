@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}계약 종료 - {{ unit.name }}{% endblock %}
+{% block content %}
+<h1>{{ unit.name }} 계약 종료</h1>
+
+<section class="panel">
+  <p><b>{{ unit.tenant }}</b> 님 · {{ unit.contract_type }} · {{ unit.start_date or '?' }} ~ {{ unit.end_date or '?' }} · 보증금 {{ unit.deposit|won }}</p>
+  <p class="muted-text">이 계약은 <b>지난 계약 이력</b>으로 옮겨지고, 호실은 공실이 됩니다. 이미 기록한 입출금은 그대로 남습니다.</p>
+</section>
+
+<form method="post" class="panel form">
+  <div class="grid">
+    <label>실제 퇴거일 *<input type="date" name="end_date" required value="{{ form.end_date }}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="record_return" value="1" {{ 'checked' if form.record_return }}> 보증금 반환을 지출로 기록 (퇴거일 날짜로)</label>
+  <div class="grid">
+    <label>반환 금액 (원)<input name="return_amount" inputmode="numeric" value="{{ form.return_amount if form.return_amount != -1 else '' }}"></label>
+  </div>
+  <label>메모<input name="memo" value="{{ form.memo }}" placeholder="예: 원상복구비 20만원 공제"></label>
+  <div class="form-actions">
+    <button class="btn primary" type="submit">계약 종료</button>
+    <a class="btn" href="{{ url_for('unit_detail', unit_id=unit.id) }}">취소</a>
+  </div>
+</form>
+{% endblock %}

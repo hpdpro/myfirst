@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{{ unit.name }} - 임대 가계부{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ unit.name }}</h1>
+  <a class="btn" href="{{ url_for('units') }}">← 호실 목록</a>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>현재 계약</h2>
+    <div class="form-actions">
+      <a class="btn small" href="{{ url_for('unit_form', unit_id=unit.id) }}">{{ '현재 계약 수정' if unit.tenant else '새 임차인 입력' }}</a>
+      {% if unit.tenant %}<a class="btn small danger-text" href="{{ url_for('contract_end', unit_id=unit.id) }}">계약 종료 (퇴거)</a>{% endif %}
+    </div>
+  </div>
+  {% if unit.tenant %}
+  <dl class="facts">
+    <div><dt>임차인</dt><dd>{{ unit.tenant }}</dd></div>
+    <div><dt>연락처</dt><dd>{{ unit.phone or '-' }}</dd></div>
+    <div><dt>계약 형태</dt><dd>{{ unit.contract_type }}</dd></div>
+    <div><dt>계약 기간</dt><dd>{{ unit.start_date or '?' }} ~ {{ unit.end_date or '?' }}</dd></div>
+    <div><dt>보증금</dt><dd>{{ unit.deposit|won }}</dd></div>
+    <div><dt>월세 + 관리비</dt><dd>{{ unit.monthly_rent|won }} + {{ unit.maintenance|won }} (매월 {{ unit.pay_day }}일)</dd></div>
+    <div><dt>계약 중 받은 월세·관리비</dt><dd class="in">{{ current_received|won }}</dd></div>
+  </dl>
+  {% if unit.memo %}<p class="memo">{{ unit.memo }}</p>{% endif %}
+  {% else %}
+  <p class="empty">현재 공실입니다.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>지난 계약 이력 <span class="count">{{ history|length }}건</span></h2>
+    <a class="btn small" href="{{ url_for('contract_form', unit_id=unit.id) }}">+ 지난 계약 직접 입력</a>
+  </div>
+  {% if history %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>임차인</th><th>계약</th><th>기간</th><th class="num">보증금</th><th class="num">월세</th><th class="num">관리비</th><th class="num">받은 월세·관리비</th><th>메모</th><th></th></tr></thead>
+    <tbody>
+    {% for h in history %}
+      <tr>
+        <td><strong>{{ h.c.tenant }}</strong>{% if h.c.phone %}<br><small class="muted-text">{{ h.c.phone }}</small>{% endif %}</td>
+        <td>{{ h.c.contract_type }}</td>
+        <td>{{ h.c.start_date or '?' }} ~ {{ h.c.end_date }}</td>
+        <td class="num">{{ h.c.deposit|won }}</td>
+        <td class="num">{{ h.c.monthly_rent|won }}</td>
+        <td class="num">{{ h.c.maintenance|won }}</td>
+        <td class="num in">{{ h.received|won }}</td>
+        <td class="wrap">{{ h.c.memo }}</td>
+        <td class="actions"><a href="{{ url_for('contract_form', contract_id=h.c.id) }}">수정</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">지난 계약이 없습니다. 임차인이 나가면 위의 <b>계약 종료</b>를 누르세요. 예전 계약은 <b>지난 계약 직접 입력</b>으로 추가할 수 있습니다.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>이 호실의 전체 입출금</h2>
+    <a class="btn small" href="{{ url_for('tx_form', unit_id=unit.id) }}">+ 기록</a>
+  </div>
+  <p class="summary">수입 <b class="in">{{ income|won }}</b> · 지출 <b class="out">{{ expense|won }}</b> · 차액 <b>{{ (income - expense)|won }}</b></p>
+  {% if txs %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>날짜</th><th>구분</th><th>분류</th><th class="num">금액</th><th>메모</th><th></th></tr></thead>
+    <tbody>
+    {% for t in txs %}
+      <tr>
+        <td>{{ t.tx_date }}</td>
+        <td><span class="tag {{ 'in' if t.kind == '수입' else 'out' }}">{{ t.kind }}</span></td>
+        <td>{{ t.category }}</td>
+        <td class="num {{ 'in' if t.kind == '수입' else 'out' }}">{{ '+' if t.kind == '수입' else '-' }}{{ t.amount|won }}</td>
+        <td>{{ t.memo }}</td>
+        <td class="actions"><a href="{{ url_for('tx_form', tx_id=t.id) }}">수정</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">기록이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

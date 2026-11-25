@@ -15,7 +15,7 @@
   <tbody>
   {% for u in units %}
     <tr class="{{ '' if is_active(u, today) else 'muted' }}">
-      <td><strong>{{ u.name }}</strong></td>
+      <td><a href="{{ url_for('unit_detail', unit_id=u.id) }}"><strong>{{ u.name }}</strong></a></td>
       <td>{{ u.tenant or '공실' }}</td>
       <td>{{ u.phone }}</td>
       <td>{{ u.contract_type }}</td>
@@ -25,7 +25,7 @@
       <td>{{ u.pay_day }}일</td>
       <td>{{ u.start_date or '?' }} ~ {{ u.end_date or '?' }}</td>
       <td class="actions">
-        <a href="{{ url_for('transactions', unit_id=u.id) }}">내역</a>
+        <a href="{{ url_for('unit_detail', unit_id=u.id) }}">상세·이력</a>
         <a href="{{ url_for('unit_form', unit_id=u.id) }}">수정</a>
       </td>
     </tr>

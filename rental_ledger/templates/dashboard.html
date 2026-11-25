@@ -24,8 +24,8 @@
     <tbody>
     {% for r in status %}
       <tr>
-        <td>{{ r.unit.name }}</td>
-        <td>{{ r.unit.tenant or '-' }}</td>
+        <td><a href="{{ url_for('unit_detail', unit_id=r.unit.id) }}">{{ r.unit.name }}</a></td>
+        <td>{{ r.tenant or '-' }}{% if r.is_past %} <span class="tag">지난 계약</span>{% endif %}</td>
         <td>{{ r.unit.pay_day }}일</td>
         <td class="num">{{ r.due|won }}</td>
         <td class="num">{{ r.paid|won }}</td>
